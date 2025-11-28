@@ -1,4 +1,4 @@
-# AI PDF Generator MVP - Complete Backend Implementation
+# AI PDF Generator MVP - Enhanced Version with Better Styling
 # Requirements: pip install fastapi uvicorn langchain langchain-ollama langchain-core reportlab python-multipart
 
 from fastapi import FastAPI, HTTPException
@@ -13,9 +13,10 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import inch
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, PageBreak
 from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_JUSTIFY
+from reportlab.lib.colors import HexColor
 from datetime import datetime
 import os
-import json
+import re
 
 # Initialize FastAPI
 app = FastAPI(title="AI PDF Generator", version="1.0.0")
@@ -29,8 +30,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Initialize Ollama (make sure Ollama is running locally with a model)
-llm = OllamaLLM(model="llama3.1:8b",temperature=0)  # You can use mistral, llama2, codellama, etc.
+# Initialize Ollama
+llm = OllamaLLM(model="llama3.1:8b", temperature=0)
 
 
 # Request/Response Models
@@ -57,10 +58,10 @@ TEMPLATES = {
 Structure your response with these sections:
 1. Executive Summary (2-3 paragraphs)
 2. Detailed Analysis (3-4 paragraphs)
-3. Key Findings (bullet points format)
+3. Key Findings (bullet points format - use • prefix)
 4. Recommendations (2-3 paragraphs)
 
-Use professional business language and provide specific, actionable insights.""",
+Use professional business language and provide specific, actionable insights. Do not use markdown formatting like ** or __.""",
         "style": "formal"
     },
     "invoice": {
@@ -72,12 +73,12 @@ Use professional business language and provide specific, actionable insights."""
 Include:
 - Company and client information
 - Invoice number and date
-- Itemized list of services/products with descriptions
+- Itemized list of services/products with descriptions (use • prefix for items)
 - Individual prices and quantities
 - Subtotal, tax (if applicable), and total amount
 - Payment terms and methods
 
-Format as a clear, professional invoice.""",
+Format as a clear, professional invoice. Do not use markdown formatting.""",
         "style": "structured"
     },
     "resume": {
@@ -88,12 +89,12 @@ Format as a clear, professional invoice.""",
 
 Include sections for:
 - Professional Summary (2-3 sentences)
-- Work Experience (with bullet points of achievements)
+- Work Experience (with bullet points using • prefix for achievements)
 - Technical Skills
 - Education
 - Certifications (if applicable)
 
-Use action verbs and quantify achievements where possible.""",
+Use action verbs and quantify achievements where possible. Do not use markdown formatting.""",
         "style": "professional"
     },
     "contract": {
@@ -107,52 +108,59 @@ Include:
 - Effective date and duration
 - Scope of work/services
 - Payment terms and schedule
-- Terms and conditions
+- Terms and conditions (use numbered points)
 - Confidentiality clause
 - Termination conditions
 - Signature section
 
-Use formal legal language appropriate for business contracts.""",
+Use formal legal language appropriate for business contracts. Do not use markdown formatting.""",
         "style": "legal"
     }
 }
 
 
-def create_pdf(content: str, template_name: str, filename: str):
-    """Generate PDF from AI-generated content"""
+def clean_text_for_pdf(text):
+    """Convert markdown-style formatting to ReportLab HTML tags"""
 
-    doc = SimpleDocTemplate(
-        filename,
-        pagesize=letter,
-        rightMargin=72,
-        leftMargin=72,
-        topMargin=72,
-        bottomMargin=18,
-    )
+    # Remove markdown bold (**text** or __text__)
+    text = re.sub(r'\*\*(.+?)\*\*', r'<b>\1</b>', text)
+    text = re.sub(r'__(.+?)__', r'<b>\1</b>', text)
 
-    # Container for the 'Flowable' objects
+    # Remove markdown italic (*text* or _text_)
+    text = re.sub(r'\*(.+?)\*', r'<i>\1</i>', text)
+    text = re.sub(r'_(.+?)_', r'<i>\1</i>', text)
+
+    # Escape XML special characters that aren't part of our tags
+    text = text.replace('&', '&amp;')
+    text = re.sub(r'<(?![bi/>])', '&lt;', text)
+    text = re.sub(r'(?<![bi/])>', '&gt;', text)
+
+    return text
+
+
+def parse_content_to_elements(content, styles):
+    """Parse AI-generated content into styled PDF elements"""
+
     elements = []
-
-    # Define styles
-    styles = getSampleStyleSheet()
+    lines = content.split('\n')
 
     # Custom styles
-    title_style = ParagraphStyle(
-        'CustomTitle',
-        parent=styles['Heading1'],
-        fontSize=24,
-        textColor='#1e3a8a',
-        spaceAfter=30,
-        alignment=TA_CENTER,
-        fontName='Helvetica-Bold'
-    )
-
     heading_style = ParagraphStyle(
         'CustomHeading',
         parent=styles['Heading2'],
         fontSize=14,
-        textColor='#1e3a8a',
+        textColor=HexColor('#1e3a8a'),
         spaceAfter=12,
+        spaceBefore=16,
+        fontName='Helvetica-Bold'
+    )
+
+    subheading_style = ParagraphStyle(
+        'CustomSubHeading',
+        parent=styles['Heading3'],
+        fontSize=12,
+        textColor=HexColor('#2563eb'),
+        spaceAfter=8,
         spaceBefore=12,
         fontName='Helvetica-Bold'
     )
@@ -162,7 +170,97 @@ def create_pdf(content: str, template_name: str, filename: str):
         parent=styles['BodyText'],
         fontSize=11,
         alignment=TA_JUSTIFY,
-        spaceAfter=12,
+        spaceAfter=10,
+        leading=14,
+    )
+
+    bullet_style = ParagraphStyle(
+        'CustomBullet',
+        parent=styles['BodyText'],
+        fontSize=11,
+        spaceAfter=6,
+        leftIndent=20,
+        bulletIndent=10,
+        leading=14,
+    )
+
+    i = 0
+    while i < len(lines):
+        line = lines[i].strip()
+
+        if not line:
+            elements.append(Spacer(1, 0.1 * inch))
+            i += 1
+            continue
+
+        # Detect section headings (numbered or all caps short lines)
+        if re.match(r'^\d+\.\s+[A-Z]', line) or (line.isupper() and len(line) < 60):
+            cleaned = clean_text_for_pdf(line)
+            para = Paragraph(cleaned, heading_style)
+            elements.append(para)
+
+        # Detect sub-headings (capitalized words)
+        elif re.match(r'^[A-Z][a-z]+(\s+[A-Z][a-z]+)*:?\s*$', line) and len(line) < 50:
+            cleaned = clean_text_for_pdf(line)
+            para = Paragraph(cleaned, subheading_style)
+            elements.append(para)
+
+        # Detect bullet points (lines starting with -, *, •, or numbered)
+        elif re.match(r'^[-*•]\s+', line) or re.match(r'^\d+\)\s+', line):
+            cleaned = clean_text_for_pdf(line)
+            # Remove the bullet/dash and add proper bullet
+            cleaned = re.sub(r'^[-*•]\s+', '• ', cleaned)
+            cleaned = re.sub(r'^\d+\)\s+', '• ', cleaned)
+            para = Paragraph(cleaned, bullet_style)
+            elements.append(para)
+
+        # Regular paragraph
+        else:
+            # Collect multi-line paragraphs
+            paragraph_lines = [line]
+            j = i + 1
+            while j < len(lines) and lines[j].strip() and not re.match(r'^[-*•]\s+', lines[j].strip()) and not re.match(
+                    r'^\d+\.\s+', lines[j].strip()):
+                paragraph_lines.append(lines[j].strip())
+                j += 1
+
+            paragraph_text = ' '.join(paragraph_lines)
+            cleaned = clean_text_for_pdf(paragraph_text)
+            para = Paragraph(cleaned, body_style)
+            elements.append(para)
+            elements.append(Spacer(1, 0.05 * inch))
+
+            i = j - 1
+
+        i += 1
+
+    return elements
+
+
+def create_pdf(content: str, template_name: str, filename: str):
+    """Generate PDF from AI-generated content with proper styling"""
+
+    doc = SimpleDocTemplate(
+        filename,
+        pagesize=letter,
+        rightMargin=72,
+        leftMargin=72,
+        topMargin=72,
+        bottomMargin=50,
+    )
+
+    elements = []
+    styles = getSampleStyleSheet()
+
+    # Title style
+    title_style = ParagraphStyle(
+        'CustomTitle',
+        parent=styles['Heading1'],
+        fontSize=24,
+        textColor=HexColor('#1e3a8a'),
+        spaceAfter=30,
+        alignment=TA_CENTER,
+        fontName='Helvetica-Bold'
     )
 
     # Add title
@@ -172,25 +270,22 @@ def create_pdf(content: str, template_name: str, filename: str):
     elements.append(Spacer(1, 0.2 * inch))
 
     # Add generation date
+    date_style = ParagraphStyle(
+        'DateStyle',
+        parent=styles['Normal'],
+        fontSize=10,
+        textColor=HexColor('#6b7280'),
+        alignment=TA_CENTER,
+        spaceAfter=20,
+    )
     date_text = f"Generated: {datetime.now().strftime('%B %d, %Y at %I:%M %p')}"
-    date_para = Paragraph(date_text, styles['Normal'])
+    date_para = Paragraph(date_text, date_style)
     elements.append(date_para)
     elements.append(Spacer(1, 0.3 * inch))
 
-    # Process content - split by sections
-    sections = content.split('\n\n')
-
-    for section in sections:
-        if section.strip():
-            # Check if it's a heading (starts with number or all caps)
-            if (section.strip()[0].isdigit() or
-                    section.strip().isupper() and len(section.strip()) < 50):
-                para = Paragraph(section.strip(), heading_style)
-            else:
-                para = Paragraph(section.strip(), body_style)
-
-            elements.append(para)
-            elements.append(Spacer(1, 0.1 * inch))
+    # Parse and add content with proper styling
+    content_elements = parse_content_to_elements(content, styles)
+    elements.extend(content_elements)
 
     # Add footer
     elements.append(Spacer(1, 0.5 * inch))
@@ -198,7 +293,7 @@ def create_pdf(content: str, template_name: str, filename: str):
         'Footer',
         parent=styles['Normal'],
         fontSize=8,
-        textColor='gray',
+        textColor=HexColor('#9ca3af'),
         alignment=TA_CENTER
     )
     footer = Paragraph(
@@ -258,18 +353,21 @@ async def generate_pdf(request: GenerateRequest):
         # Get template configuration
         template_config = TEMPLATES[request.template]
 
-        # Create LangChain prompt (new LCEL syntax)
+        # Create LangChain prompt
         prompt = PromptTemplate(
             input_variables=["user_prompt"],
             template=template_config["prompt_template"]
         )
 
-        # Create chain using LCEL (LangChain Expression Language)
+        # Create chain using LCEL
         chain = prompt | llm | StrOutputParser()
 
         # Generate content
         print(f"Generating content for: {request.prompt[:50]}...")
         ai_content = chain.invoke({"user_prompt": request.prompt})
+
+        print("Generated content preview:")
+        print(ai_content[:200])
 
         # Create output directory if it doesn't exist
         os.makedirs("output", exist_ok=True)
@@ -289,6 +387,7 @@ async def generate_pdf(request: GenerateRequest):
         )
 
     except Exception as e:
+        print(f"Error: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Generation failed: {str(e)}")
 
 
@@ -307,11 +406,9 @@ async def download_pdf(filename: str):
     )
 
 
-# Run with: uvicorn main:app --reload --host 0.0.0.0 --port 8000
-
 if __name__ == "__main__":
     import uvicorn
 
     print("Starting AI PDF Generator API...")
-    print("Make sure Ollama is running with: ollama run llama2")
+    print("Make sure Ollama is running with: ollama run llama3.1:8b")
     uvicorn.run(app, host="0.0.0.0", port=8000)
