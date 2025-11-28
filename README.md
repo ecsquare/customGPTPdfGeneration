@@ -4,6 +4,7 @@
 
 A production-ready MVP that generates custom PDFs using AI (Ollama + LangChain). Perfect for demonstrating your capabilities to the Upwork client.
 
+![customGPTPdfGeneration](./images/interface.png)
 ## 📋 Features
 
 - ✅ Multiple professional PDF templates (Business Reports, Invoices, Resumes, Contracts)
