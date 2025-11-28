@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI PDF Generator</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            background: linear-gradient(135deg, #1e1b4b 0%, #581c87 50%, #1e1b4b 100%);
+        }
+        .glass {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        .btn-primary {
+            background: linear-gradient(135deg, #9333ea 0%, #ec4899 100%);
+            transition: all 0.3s ease;
+        }
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 25px rgba(147, 51, 234, 0.4);
+        }
+        .spinner {
+            border: 3px solid rgba(255, 255, 255, 0.3);
+            border-top: 3px solid white;
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body class="min-h-screen">
+    <div id="app">
+        <!-- Header -->
+        <header class="glass border-b border-purple-500/20">
+            <div class="max-w-7xl mx-auto px-4 py-6">
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center gap-3">
+                        <div class="bg-gradient-to-br from-purple-500 to-pink-500 p-3 rounded-xl">
+                            <svg class="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                            </svg>
+                        </div>
+                        <div>
+                            <h1 class="text-3xl font-bold text-white">AI PDF Generator</h1>
+                            <p class="text-purple-300 text-sm">Powered by LangChain + Ollama</p>
+                        </div>
+                    </div>
+                    <div id="health-status"></div>
+                </div>
+            </div>
+        </header>
+
+        <main class="max-w-7xl mx-auto px-4 py-8">
+            <div class="grid lg:grid-cols-3 gap-6">
+                <!-- Main Content -->
+                <div class="lg:col-span-2 space-y-6">
+                    <!-- Template Selection -->
+                    <div class="glass rounded-2xl p-6 shadow-2xl">
+                        <h2 class="text-xl font-semibold text-white mb-4 flex items-center gap-2">
+                            <svg class="w-5 h-5 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                            </svg>
+                            Select Template
+                        </h2>
+                        <div id="templates" class="grid grid-cols-2 gap-3"></div>
+                    </div>
+
+                    <!-- Prompt Input -->
+                    <div class="glass rounded-2xl p-6 shadow-2xl">
+                        <h2 class="text-xl font-semibold text-white mb-4">Describe Your Requirements</h2>
+                        <textarea
+                            id="prompt"
+                            placeholder="Enter your requirements..."
+                            class="w-full h-40 p-4 bg-black/30 border border-white/20 rounded-xl text-white placeholder-purple-300/50 focus:ring-2 focus:ring-purple-500 focus:border-transparent resize-none"
+                        ></textarea>
+                        <div class="mt-4">
+                            <button
+                                id="generate-btn"
+                                class="w-full btn-primary text-white py-4 px-6 rounded-xl font-semibold shadow-lg flex items-center justify-center gap-2"
+                            >
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+                                </svg>
+                                Generate PDF
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Result Area -->
+                    <div id="result-area"></div>
+                    <div id="error-area"></div>
+                </div>
+
+                <!-- Sidebar -->
+                <div class="space-y-6">
+                    <!-- Template Info -->
+                    <div class="glass rounded-2xl p-6 shadow-2xl">
+                        <h3 class="font-semibold text-white mb-3">Template Details</h3>
+                        <div id="template-info"></div>
+                    </div>
+
+                    <!-- Recent History -->
+                    <div class="glass rounded-2xl p-6 shadow-2xl">
+                        <h3 class="font-semibold text-white mb-3">Recent Generations</h3>
+                        <div id="history" class="space-y-2 max-h-96 overflow-y-auto"></div>
+                    </div>
+
+                    <!-- Tech Stack -->
+                    <div class="glass rounded-2xl p-6 shadow-2xl">
+                        <h3 class="font-semibold text-white mb-3">Tech Stack</h3>
+                        <div class="space-y-2">
+                            <div class="bg-blue-500/20 border border-blue-500/30 rounded-lg p-3">
+                                <div class="font-medium text-blue-300">🤖 Ollama</div>
+                                <div class="text-xs text-blue-200">Local LLM</div>
+                            </div>
+                            <div class="bg-purple-500/20 border border-purple-500/30 rounded-lg p-3">
+                                <div class="font-medium text-purple-300">🔗 LangChain</div>
+                                <div class="text-xs text-purple-200">Prompt Engineering</div>
+                            </div>
+                            <div class="bg-green-500/20 border border-green-500/30 rounded-lg p-3">
+                                <div class="font-medium text-green-300">📄 ReportLab</div>
+                                <div class="text-xs text-green-200">PDF Generation</div>
+                            </div>
+                            <div class="bg-orange-500/20 border border-orange-500/30 rounded-lg p-3">
+                                <div class="font-medium text-orange-300">⚡ FastAPI</div>
+                                <div class="text-xs text-orange-200">Backend API</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        const API_BASE = 'http://localhost:8000';
+        let currentTemplate = 'business_report';
+        let history = JSON.parse(localStorage.getItem('pdf_history') || '[]');
+
+        const templates = {
+            business_report: {
+                name: 'Business Report',
+                description: 'Professional business report with analysis and recommendations',
+                icon: '📊',
+                fields: ['Executive Summary', 'Analysis', 'Key Findings', 'Recommendations'],
+                example: 'Generate a Q4 2024 sales performance report for TechCorp analyzing revenue growth of 35%, market expansion in Europe, and recommendations for 2025 strategy.'
+            },
+            invoice: {
+                name: 'Invoice',
+                description: 'Professional invoice with itemization and totals',
+                icon: '💰',
+                fields: ['Company Info', 'Client Info', 'Line Items', 'Total'],
+                example: 'Create an invoice for ABC Consulting to XYZ Corp for 40 hours software development at $100/hr and 10 hours consulting at $150/hr, invoice #INV-2024-001.'
+            },
+            resume: {
+                name: 'Resume/CV',
+                description: 'Professional resume with experience and skills',
+                icon: '👤',
+                fields: ['Summary', 'Experience', 'Skills', 'Education'],
+                example: 'Generate a resume for Sarah Johnson, Senior Full-Stack Developer with 6 years experience in React, Node.js, Python, AWS. Worked at Google and Microsoft.'
+            },
+            contract: {
+                name: 'Contract',
+                description: 'Legal contract with terms and conditions',
+                icon: '📝',
+                fields: ['Parties', 'Terms', 'Conditions', 'Signatures'],
+                example: 'Draft a 6-month freelance development contract between TechStudio LLC and GlobalCorp Inc for mobile app development, payment $45,000 in 3 milestones.'
+            }
+        };
+
+        function init() {
+            renderTemplates();
+            renderTemplateInfo();
+            renderHistory();
+            checkHealth();
+            document.getElementById('prompt').value = templates[currentTemplate].example;
+            document.getElementById('generate-btn').addEventListener('click', generatePDF);
+        }
+
+        function renderTemplates() {
+            const container = document.getElementById('templates');
+            container.innerHTML = Object.entries(templates).map(([key, tmpl]) => `
+                <button
+                    onclick="selectTemplate('${key}')"
+                    class="p-4 rounded-xl border-2 transition-all text-left ${
+                        key === currentTemplate
+                            ? 'border-purple-500 bg-purple-500/20 shadow-lg'
+                            : 'border-white/20 bg-white/5 hover:border-purple-400/50'
+                    }"
+                >
+                    <div class="text-2xl mb-2">${tmpl.icon}</div>
+                    <div class="font-semibold text-white">${tmpl.name}</div>
+                    <div class="text-xs text-purple-300 mt-1">${tmpl.description}</div>
+                </button>
+            `).join('');
+        }
+
+        function selectTemplate(key) {
+            currentTemplate = key;
+            document.getElementById('prompt').value = templates[key].example;
+            renderTemplates();
+            renderTemplateInfo();
+            document.getElementById('result-area').innerHTML = '';
+            document.getElementById('error-area').innerHTML = '';
+        }
+
+        function renderTemplateInfo() {
+            const tmpl = templates[currentTemplate];
+            document.getElementById('template-info').innerHTML = `
+                <div class="space-y-3">
+                    <div class="text-3xl">${tmpl.icon}</div>
+                    <div class="font-medium text-white">${tmpl.name}</div>
+                    <div class="text-sm text-purple-300">${tmpl.description}</div>
+                    <div class="pt-3 border-t border-white/20">
+                        <div class="text-sm font-medium text-white mb-2">Included Fields:</div>
+                        <div class="space-y-1">
+                            ${tmpl.fields.map(field => `
+                                <div class="text-xs text-purple-300 flex items-center gap-2">
+                                    <div class="w-1.5 h-1.5 rounded-full bg-purple-400"></div>
+                                    ${field}
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderHistory() {
+            const container = document.getElementById('history');
+            if (history.length === 0) {
+                container.innerHTML = '<div class="text-purple-300 text-sm text-center py-4">No history yet. Generate your first PDF!</div>';
+            } else {
+                container.innerHTML = history.map(item => `
+                    <div
+                        onclick="downloadPDF('${item.filename}')"
+                        class="bg-black/30 rounded-lg p-3 border border-white/10 hover:border-purple-500/50 transition-all cursor-pointer"
+                    >
+                        <div class="flex items-start justify-between gap-2 mb-1">
+                            <div class="text-sm font-medium text-white truncate flex-1">${item.template}</div>
+                            <svg class="w-4 h-4 text-purple-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+                            </svg>
+                        </div>
+                        <div class="text-xs text-purple-300 truncate mb-1">${item.prompt}</div>
+                        <div class="text-xs text-purple-400">${item.timestamp}</div>
+                    </div>
+                `).join('');
+            }
+        }
+
+        async function checkHealth() {
+            try {
+                const response = await fetch(`${API_BASE}/api/health`);
+                const data = await response.json();
+                const statusEl = document.getElementById('health-status');
+                const isHealthy = data.status === 'healthy';
+                statusEl.innerHTML = `
+                    <div class="flex items-center gap-2 px-4 py-2 rounded-lg ${
+                        isHealthy
+                            ? 'bg-green-500/20 text-green-300 border border-green-500/30'
+                            : 'bg-red-500/20 text-red-300 border border-red-500/30'
+                    }">
+                        <div class="w-2 h-2 rounded-full ${
+                            isHealthy ? 'bg-green-400' : 'bg-red-400'
+                        } animate-pulse"></div>
+                        <span class="text-sm font-medium">${isHealthy ? 'Connected' : 'Disconnected'}</span>
+                    </div>
+                `;
+            } catch (err) {
+                console.error('Health check failed:', err);
+            }
+        }
+
+        async function generatePDF() {
+            const prompt = document.getElementById('prompt').value.trim();
+            if (!prompt) return;
+
+            const btn = document.getElementById('generate-btn');
+            btn.disabled = true;
+            btn.innerHTML = '<div class="spinner"></div> Generating...';
+
+            document.getElementById('result-area').innerHTML = '';
+            document.getElementById('error-area').innerHTML = '';
+
+            try {
+                const response = await fetch(`${API_BASE}/api/generate`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ prompt, template: currentTemplate })
+                });
+
+                if (!response.ok) throw new Error('Generation failed');
+
+                const data = await response.json();
+
+                document.getElementById('result-area').innerHTML = `
+                    <div class="glass rounded-2xl border-2 border-green-500/50 p-6 shadow-2xl">
+                        <div class="flex items-center gap-3 mb-4">
+                            <svg class="w-7 h-7 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                            </svg>
+                            <h2 class="text-xl font-semibold text-white">PDF Generated Successfully!</h2>
+                        </div>
+                        <div class="grid grid-cols-2 gap-4 mb-4">
+                            <div class="bg-black/30 rounded-lg p-3">
+                                <div class="text-purple-300 text-sm">Template</div>
+                                <div class="text-white font-medium">${templates[currentTemplate].name}</div>
+                            </div>
+                            <div class="bg-black/30 rounded-lg p-3">
+                                <div class="text-purple-300 text-sm">Tokens Used</div>
+                                <div class="text-white font-medium">${data.tokens_used}</div>
+                            </div>
+                        </div>
+                        <button
+                            onclick="downloadPDF('${data.filename}')"
+                            class="w-full bg-gradient-to-r from-green-600 to-emerald-600 text-white py-4 px-6 rounded-xl font-semibold hover:from-green-700 hover:to-emerald-700 transition-all shadow-lg flex items-center justify-center gap-2"
+                        >
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+                            </svg>
+                            Download PDF
+                        </button>
+                    </div>
+                `;
+
+                const historyItem = {
+                    id: Date.now(),
+                    template: templates[currentTemplate].name,
+                    prompt: prompt.substring(0, 100) + '...',
+                    filename: data.filename,
+                    timestamp: new Date().toLocaleString(),
+                    tokens: data.tokens_used
+                };
+                history.unshift(historyItem);
+                history = history.slice(0, 10);
+                localStorage.setItem('pdf_history', JSON.stringify(history));
+                renderHistory();
+
+            } catch (err) {
+                document.getElementById('error-area').innerHTML = `
+                    <div class="bg-red-500/20 border-2 border-red-500/50 rounded-2xl p-6 flex items-start gap-3 shadow-2xl">
+                        <svg class="w-6 h-6 text-red-400 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                        </svg>
+                        <div>
+                            <div class="text-white font-semibold mb-1">Generation Failed</div>
+                            <div class="text-red-300">${err.message}</div>
+                            <div class="text-red-400 text-sm mt-2">Make sure the API server is running at ${API_BASE}</div>
+                        </div>
+                    </div>
+                `;
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = `
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+                    </svg>
+                    Generate PDF
+                `;
+            }
+        }
+
+        function downloadPDF(filename) {
+            const fileName = filename.split('/').pop();
+            window.open(`${API_BASE}/api/download/${fileName}`, '_blank');
+        }
+
+        init();
+    </script>
+</body>
+</html>
